@@ -3,12 +3,12 @@
 //|                                         Copyright 2026, rpanchyk |
 //|                                      https://github.com/rpanchyk |
 //+------------------------------------------------------------------+
-#property service
 #property copyright "Copyright 2026, rpanchyk"
 #property link      "https://github.com/rpanchyk"
 #property version     "1.00"
 #property description "Exports broker tick history and bars of any timeframe to CSV files."
 #property description "Runs as a service: no chart is used. Progress is printed to the Experts journal."
+#property service
 
 //+------------------------------------------------------------------+
 //| Enumerations used by inputs                                      |
