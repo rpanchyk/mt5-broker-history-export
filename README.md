@@ -76,6 +76,8 @@ git clone <repository URL> mt5-broker-history-export
 5. On the **Inputs** tab, set the parameters. Refer to [Inputs](#inputs).
 6. Click **OK**.
 
+![The Inputs tab of the service](config.png)
+
 The service starts immediately. It shows the progress in the **Experts** tab of the **Toolbox** window.
 
 When the export is complete, the service stops automatically.
@@ -108,7 +110,7 @@ You must enable ticks, bars, or both. To export only bars, set `InpExportTicks` 
 
 | Input | Default | Description |
 |---|---|---|
-| `InpDateFrom` | `2026.01.01 00:00` | Start of the period. This time is included. |
+| `InpDateFrom` | `2026.11.01 00:00` | Start of the period. This time is included. |
 | `InpDateTo` | `0` | End of the period. This time is not included. `0` is the current server time. |
 
 All times are in the time zone of the broker server.
@@ -173,9 +175,9 @@ Example: EURUSD, ticks and the timeframes M1 and H1, default split mode:
 ```
 MQL5\Files\HistoryExport\
 └── EURUSD\
-    ├── EURUSD_TICKS_20260101_20261113.csv
-    ├── EURUSD_M1_20260101_20261113.csv
-    └── EURUSD_H1_20260101_20261113.csv
+    ├── EURUSD_TICKS_20261101_20261113.csv
+    ├── EURUSD_M1_20261101_20261113.csv
+    └── EURUSD_H1_20261101_20261113.csv
 ```
 
 The same export with `InpTickSplitMode = SPLIT_MONTH` and `InpBarSplitMode = SPLIT_YEAR`:
@@ -183,8 +185,7 @@ The same export with `InpTickSplitMode = SPLIT_MONTH` and `InpBarSplitMode = SPL
 ```
 MQL5\Files\HistoryExport\
 └── EURUSD\
-    ├── EURUSD_TICKS_2026-01.csv
-    ├── EURUSD_TICKS_2026-02.csv
+    ├── EURUSD_TICKS_2026-11.csv
     ├── EURUSD_M1_2026.csv
     └── EURUSD_H1_2026.csv
 ```
@@ -285,7 +286,7 @@ The service does not write the bar that is not closed.
 ```python
 import pandas as pd
 
-ticks = pd.read_csv("EURUSD_TICKS_20260101_20261113.csv")
+ticks = pd.read_csv("EURUSD_TICKS_20261101_20261113.csv")
 ticks["datetime"] = pd.to_datetime(ticks["datetime"], format="%Y.%m.%d %H:%M:%S.%f")
 ```
 
