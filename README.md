@@ -155,6 +155,14 @@ Column lists:
 | `InpConnectTimeoutSec` | `120` | Maximum time to wait for the server connection, in seconds (0–3600). |
 | `InpProgressIntervalSec` | `30` | Time between progress lines in the journal, in seconds. `0` disables the progress lines. |
 
+### History start
+
+| Input | Default | Description |
+|---|---|---|
+| `InpProbeFirstTick` | `true` | Set to `true` to find the first tick since 2000.01.01 at the start. This is fast. The service does this check only if it exports ticks. |
+| `InpProbeFirstBar` | `true` | Set to `true` to find the first M1 bar since 2000.01.01 at the start. The service does this check only if it exports bars. The first time for a symbol, this can take some minutes. The service starts the bar export at this date if the history is shorter than the period. |
+
+
 ## Output files
 
 The service puts the files of each symbol in a subfolder with the symbol name.
@@ -296,7 +304,11 @@ ticks["datetime"] = pd.to_datetime(ticks["datetime"], format="%Y.%m.%d %H:%M:%S.
 2. The service waits for the connection to the trade server.
 3. The service calculates the end of the period.
 4. The service adds each symbol to Market Watch.
-5. The service exports the data symbol by symbol. For each symbol, it exports the ticks first. Then it exports the timeframes in the order of `InpBarTimeframes`.
+5. The service writes the history depth of each symbol to the journal:
+   - The first tick since 2000.01.01 (if `InpExportTicks` and `InpProbeFirstTick` are `true`).
+   - The first M1 bar since 2000.01.01 (if `InpBarTimeframes` is set and `InpProbeFirstBar` is `true`). The first time for a symbol, this can take some minutes, because the terminal downloads the history of the symbol. The next starts use the terminal cache. The terminal gives a maximum of "Max bars in chart" M1 bars. If the limit cuts the history, the journal shows `cut by "Max bars in chart"`.
+   - The first tick of the period (only if `InpExportTicks` is `true`).
+6. The service exports the data symbol by symbol. For each symbol, it exports the ticks first. Then it exports the timeframes in the order of `InpBarTimeframes`.
 
 For each file, the service:
 
@@ -347,6 +359,9 @@ The service writes all messages to the **Experts** tab. Each line starts with th
 
 ```
 BrokerHistoryExport start: symbols=EURUSD, ticks=ALL, bars=M1,H1, 2026.01.01 00:00:00 .. 2026.11.13 15:20:11, split ticks=MONTH bars=YEAR, folder=HistoryExport
+BrokerHistoryExport looking for the first M1 bar since 2000.01.01; the first run for a symbol can take minutes (the terminal downloads its history)
+BrokerHistoryExport [EURUSD] history: first tick since 2000.01.01: 2026.04.01 00:48:58.000
+BrokerHistoryExport [EURUSD] history: first M1 bar since 2000.01.01: 2025.07.11 20:47:00 (cut by "Max bars in chart" = 500 000; older bars can exist)
 BrokerHistoryExport [EURUSD] TICKS: first tick at 2026.01.02 00:00:00.104
 BrokerHistoryExport [EURUSD] progress 1/1 TICKS 2026.03.14 (24%), 18 233 410 rows
 BrokerHistoryExport [EURUSD] TICKS 2026-03: 6 120 877 rows, 2026.03.02 00:00:00.104 .. 2026.03.31 23:59:58.912, gaps=0 -> EURUSD\EURUSD_TICKS_2026-03.csv

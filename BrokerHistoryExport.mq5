@@ -77,6 +77,10 @@ input bool              InpVerifyTicksWithM1   = true;            // Verify tick
 input int               InpConnectTimeoutSec   = 120;             // Wait for server connection, s (0-3600)
 input int               InpProgressIntervalSec = 30;              // Progress interval, s (0 = off)
 
+input group "History start"
+input bool              InpProbeFirstTick      = true;            // Find the first tick since 2000.01.01
+input bool              InpProbeFirstBar       = true;            // Find the first M1 bar since 2000.01.01
+
 //+------------------------------------------------------------------+
 //| Constants                                                        |
 //+------------------------------------------------------------------+
@@ -84,6 +88,9 @@ input int               InpProgressIntervalSec = 30;              // Progress in
 #define RES_ERROR           1   // this data type failed, continue with the next one
 #define RES_STOP            2   // stopped by the user
 #define RES_FATAL           3   // connection lost, the service must exit
+
+#define FIRST_TICK_NOT_SEARCHED (-2)
+#define HISTORY_PROBE_FROM  D'2000.01.01'  // the first tick and bar are searched from this date
 
 #define CHECK_OK            0
 #define CHECK_SUSPICIOUS    1
@@ -976,6 +983,19 @@ void BuildBarLine(const MqlRates &r, const int digits, string &line)
   }
 
 //+------------------------------------------------------------------+
+//| Date property of a series, 0 if not available.                   |
+//| Uses the bool form of SeriesInfoInteger, as the MQL5 sample      |
+//| "Organizing Data Access" does                                    |
+//+------------------------------------------------------------------+
+datetime SeriesDate(const string sym, const ENUM_TIMEFRAMES tf, const ENUM_SERIES_INFO_INTEGER prop)
+  {
+   long value = 0;
+   if(!SeriesInfoInteger(sym, tf, prop, value))
+      return 0;
+   return (datetime)value;
+  }
+
+//+------------------------------------------------------------------+
 //| true if the terminal keeps fewer bars than the server has:       |
 //| the local series is cut by "Max bars in chart"                   |
 //+------------------------------------------------------------------+
@@ -993,8 +1013,8 @@ bool RangeIsEmpty(const string sym, const ENUM_TIMEFRAMES tf, const datetime fro
   {
    if(!SeriesInfoInteger(sym, tf, SERIES_SYNCHRONIZED) || Bars(sym, tf, from, to) != 0)
       return false;
-   datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
-   datetime server_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_SERVER_FIRSTDATE);
+   datetime local_first = SeriesDate(sym, tf, SERIES_FIRSTDATE);
+   datetime server_first = SeriesDate(sym, tf, SERIES_SERVER_FIRSTDATE);
 //--- weekend / holiday inside the local history
    if(local_first > 0 && from >= local_first)
       return true;
@@ -1012,7 +1032,7 @@ bool RangeIsEmpty(const string sym, const ENUM_TIMEFRAMES tf, const datetime fro
 //+------------------------------------------------------------------+
 string HistoryLimitHint(const string sym, const ENUM_TIMEFRAMES tf, const datetime from)
   {
-   datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
+   datetime local_first = SeriesDate(sym, tf, SERIES_FIRSTDATE);
    if(local_first > 0 && from < local_first && LocalHistoryCut(sym, tf))
       return StringFormat("; the terminal keeps only %s bars (\"Max bars in chart\"), local history starts at %s: set \"Max bars in chart\" to Unlimited and restart the terminal",
                           FormatCount(TerminalInfoInteger(TERMINAL_MAXBARS)), FormatDateTime(local_first));
@@ -1093,10 +1113,10 @@ int CheckTicksWithM1(const string sym, const MqlTick &ticks[], const int n,
   }
 
 //+------------------------------------------------------------------+
-//| First tick not earlier than g_from (5.3).                        |
+//| First tick not earlier than from (5.3).                          |
 //| first_msc = -1 if there are no ticks                             |
 //+------------------------------------------------------------------+
-int FindFirstTick(const string sym, const uint flags, long &first_msc)
+int FindFirstTick(const string sym, const uint flags, const datetime from, long &first_msc)
   {
    first_msc = -1;
    MqlTick t[];
@@ -1110,7 +1130,9 @@ int FindFirstTick(const string sym, const uint flags, long &first_msc)
       if(!EnsureConnected(sym))
          return ConnectionResult();
       ResetLastError();
-      int n = CopyTicks(sym, t, flags, (ulong)g_from * 1000, 1);
+      //--- from = 0 means "the latest ticks" for CopyTicks, so 1970.01.01 is sent as 1 ms
+      ulong from_msc = (from > 0) ? (ulong)from * 1000 : 1;
+      int n = CopyTicks(sym, t, flags, from_msc, 1);
       err = GetLastError();
       if(n > 0)
         {
@@ -1323,28 +1345,151 @@ bool ClosePeriodFile(CCsvWriter &w, const string sym, const string type, const s
   }
 
 //+------------------------------------------------------------------+
-//| Ticks of one symbol                                              |
+//| Journal line about the first tick of the period                  |
 //+------------------------------------------------------------------+
-int ExportTicks(const int si, const int stotal, const string sym, const int digits, SStat &st)
+void LogFirstTick(const string sym, const long first_msc)
   {
-   const string type = "TICKS";
-   uint flags = TickCopyFlags();
-//--- first available tick
-   long first_msc = -1;
-   int res = FindFirstTick(sym, flags, first_msc);
-   if(res != RES_OK)
-      return res;
    if(first_msc < 0 || first_msc >= (long)g_to * 1000)
      {
       Log(sym, "TICKS: no ticks in the requested period");
-      st.note = "no data";
-      return RES_OK;
+      return;
      }
    datetime first_sec = (datetime)(first_msc / 1000);
    if(first_sec - g_from > TICK_HISTORY_NOTE_SEC)
       Log(sym, StringFormat("TICKS: tick history starts at %s, requested %s", FormatTimeMsc(first_msc), FormatDate(g_from)));
    else
       Log(sym, StringFormat("TICKS: first tick at %s", FormatTimeMsc(first_msc)));
+  }
+
+//+------------------------------------------------------------------+
+//| First M1 bar since HISTORY_PROBE_FROM. The first request can     |
+//| download the history of the symbol and take minutes; later it is |
+//| cached. The terminal gives at most "Max bars in chart" M1 bars:  |
+//| cut = true if the answer is cut by this limit, then first_bar is |
+//| the first bar inside the limit, not the start of the history.    |
+//| first_bar = 0 if no bar was obtained                             |
+//+------------------------------------------------------------------+
+int ProbeFirstBar(const string sym, datetime &first_bar, bool &cut)
+  {
+   first_bar = 0;
+   cut = false;
+   datetime times[];
+   int err = 0;
+   for(int a = 0; a <= InpMaxRetries; a++)
+     {
+      if(a > 0)
+         Sleep(InpRetryDelayMs);
+      if(IsStopped())
+         return RES_STOP;
+      if(!EnsureConnected(sym))
+         return ConnectionResult();
+      ResetLastError();
+      int n = CopyTime(sym, PERIOD_M1, HISTORY_PROBE_FROM, TimeTradeServer(), times);
+      err = GetLastError();
+      if(IsStopped())
+         return RES_STOP;
+      if(n > 0)
+        {
+         first_bar = times[0];
+         cut = ((long)n >= TerminalInfoInteger(TERMINAL_MAXBARS));
+         return RES_OK;
+        }
+     }
+   Log(sym, StringFormat("WARNING: history: first bar since %s not found (error %d)", FormatDate(HISTORY_PROBE_FROM), err));
+   return RES_OK;
+  }
+
+//+------------------------------------------------------------------+
+//| History depth of one symbol, printed at the start:               |
+//| first tick and first M1 bar since HISTORY_PROBE_FROM (only the   |
+//| searches that are enabled and needed) and the first tick of the  |
+//| requested period (if ticks are exported).                        |
+//| bars_start = start of the bar history, 0 if it is earlier than   |
+//| HISTORY_PROBE_FROM or unknown                                    |
+//+------------------------------------------------------------------+
+int LogHistoryInfo(const string sym, long &first_tick_msc, datetime &bars_start)
+  {
+   first_tick_msc = FIRST_TICK_NOT_SEARCHED;
+   bars_start = 0;
+   uint flags = TickCopyFlags();
+   int res = RES_OK;
+//--- first tick since HISTORY_PROBE_FROM (fast: a single tick is requested).
+//--- Only when ticks are exported and InpProbeFirstTick = true
+   long probe_tick = FIRST_TICK_NOT_SEARCHED;
+   if(InpExportTicks && InpProbeFirstTick)
+     {
+      res = FindFirstTick(sym, flags, HISTORY_PROBE_FROM, probe_tick);
+      if(res != RES_OK)
+         return res;
+      if(probe_tick >= 0)
+         Log(sym, StringFormat("history: first tick since %s: %s", FormatDate(HISTORY_PROBE_FROM), FormatTimeMsc(probe_tick)));
+      else
+         Log(sym, StringFormat("history: no ticks since %s", FormatDate(HISTORY_PROBE_FROM)));
+     }
+//--- first bar since HISTORY_PROBE_FROM (slow on the first run)
+   datetime first_bar = 0;
+   bool cut = false;
+//--- only when bars are exported and InpProbeFirstBar = true
+   if(ArraySize(g_tfIdx) > 0 && InpProbeFirstBar)
+     {
+      res = ProbeFirstBar(sym, first_bar, cut);
+      if(res != RES_OK)
+         return res;
+     }
+   if(first_bar > 0)
+     {
+      if(cut)
+         //--- the terminal limit, not the history start: older M1 bars can exist
+         Log(sym, StringFormat("history: first M1 bar since %s: %s (cut by \"Max bars in chart\" = %s; older bars can exist)",
+                               FormatDate(HISTORY_PROBE_FROM), FormatDateTime(first_bar), FormatCount(TerminalInfoInteger(TERMINAL_MAXBARS))));
+      else
+         //--- a bar in the first week of the probe period: the history may be older
+         if(first_bar - HISTORY_PROBE_FROM > TICK_HISTORY_NOTE_SEC)
+           {
+            bars_start = first_bar;
+            Log(sym, StringFormat("history: first M1 bar since %s: %s", FormatDate(HISTORY_PROBE_FROM), FormatDateTime(first_bar)));
+           }
+         else
+            Log(sym, StringFormat("history: first M1 bar since %s: %s (the history can be older)", FormatDate(HISTORY_PROBE_FROM), FormatDateTime(first_bar)));
+     }
+//--- first tick of the requested period: reuse the probe if possible
+   if(!InpExportTicks)
+      return RES_OK;
+   long msc = probe_tick;
+   if(probe_tick == FIRST_TICK_NOT_SEARCHED || (probe_tick >= 0 && probe_tick < (long)g_from * 1000))
+     {
+      res = FindFirstTick(sym, flags, g_from, msc);
+      if(res != RES_OK)
+         return res;
+     }
+   first_tick_msc = msc;
+   LogFirstTick(sym, msc);
+   return RES_OK;
+  }
+
+//+------------------------------------------------------------------+
+//| Ticks of one symbol                                              |
+//+------------------------------------------------------------------+
+int ExportTicks(const int si, const int stotal, const string sym, const int digits, const long known_first_msc, SStat &st)
+  {
+   const string type = "TICKS";
+   uint flags = TickCopyFlags();
+//--- first available tick (normally already found at the start)
+   long first_msc = known_first_msc;
+   int res = RES_OK;
+   if(first_msc == FIRST_TICK_NOT_SEARCHED)
+     {
+      res = FindFirstTick(sym, flags, g_from, first_msc);
+      if(res != RES_OK)
+         return res;
+      LogFirstTick(sym, first_msc);
+     }
+   if(first_msc < 0 || first_msc >= (long)g_to * 1000)
+     {
+      st.note = "no data";
+      return RES_OK;
+     }
+   datetime first_sec = (datetime)(first_msc / 1000);
    datetime eff_start = DtMax(g_from, DayFloor(first_sec));
    bool verify = InpVerifyTicksWithM1 && InpTickType != TICKS_TRADE;
 //--- files
@@ -1443,34 +1588,17 @@ int ExportTicks(const int si, const int stotal, const string sym, const int digi
 //| Bars of one symbol and timeframe                                 |
 //+------------------------------------------------------------------+
 int ExportBars(const int si, const int stotal, const string sym, const int digits,
-               const ENUM_TIMEFRAMES tf, const string type, SStat &st)
+               const ENUM_TIMEFRAMES tf, const string type, const datetime bars_start, SStat &st)
   {
-//--- history depth: the terminal may not know the server start yet
-//--- (e.g. the symbol was just added to Market Watch), so wait for it
-   datetime server_first = 0;
-   for(int a = 0; a <= InpMaxRetries; a++)
-     {
-      if(a > 0)
-         Sleep(InpRetryDelayMs);
-      if(IsStopped())
-         return RES_STOP;
-      if(!EnsureConnected(sym))
-         return ConnectionResult();
-      Bars(sym, tf);                   // requests the series and starts its synchronization
-      server_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_SERVER_FIRSTDATE);
-      if(server_first > 0)
-         break;
-     }
-   datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
-   Log(sym, StringFormat("%s: server history from %s, local history from %s", type,
-                         server_first > 0 ? FormatDate(server_first) : "unknown",
-                         local_first > 0 ? FormatDate(local_first) : "none"));
+//--- history depth: bars_start comes from the probe at the start (LogHistoryInfo).
+//--- SERIES_SERVER_FIRSTDATE is 0 in services, but is used if a terminal gives it
+   datetime server_first = SeriesDate(sym, tf, SERIES_SERVER_FIRSTDATE);
    if(server_first == 0)
-      Log(sym, StringFormat("WARNING: %s: server history start is unknown, periods before the local history are treated as empty only if \"Max bars in chart\" does not cut it", type));
+      server_first = bars_start;
    datetime eff_start = g_from;
    if(server_first > 0 && server_first > g_from)
      {
-      Log(sym, StringFormat("%s: server history starts at %s, requested %s", type, FormatDate(server_first), FormatDate(g_from)));
+      Log(sym, StringFormat("%s: bar history starts at %s, requested %s", type, FormatDate(server_first), FormatDate(g_from)));
       eff_start = server_first;
      }
    if(eff_start >= g_to)
@@ -1680,10 +1808,35 @@ void OnStart()
       Log("", StringFormat("ERROR: cannot create folder %s (error %d)", g_baseFolder, GetLastError()));
       return;
      }
-//--- 7. symbol by symbol
-   g_lastProgress = GetTickCount64();
+//--- history depth of all symbols
    string status = "finished";
    bool abort = false;
+   long first_ticks[];
+   datetime bars_starts[];
+   ArrayResize(first_ticks, stotal);
+   ArrayResize(bars_starts, stotal);
+   ArrayInitialize(first_ticks, FIRST_TICK_NOT_SEARCHED);
+   ArrayInitialize(bars_starts, 0);
+   if(ArraySize(g_tfIdx) > 0 && InpProbeFirstBar)
+      Log("", StringFormat("looking for the first M1 bar since %s; the first run for a symbol can take minutes (the terminal downloads its history)",
+                           FormatDate(HISTORY_PROBE_FROM)));
+   for(int si = 0; si < stotal && !abort; si++)
+     {
+      int res = LogHistoryInfo(symbols[si], first_ticks[si], bars_starts[si]);
+      if(res == RES_STOP)
+        {
+         status = "stopped by user";
+         abort = true;
+        }
+      else
+         if(res == RES_FATAL)
+           {
+            status = "aborted: connection lost";
+            abort = true;
+           }
+     }
+//--- 7. symbol by symbol
+   g_lastProgress = GetTickCount64();
    for(int si = 0; si < stotal && !abort; si++)
      {
       string sym = symbols[si];
@@ -1705,7 +1858,7 @@ void OnStart()
       if(InpExportTicks)
         {
          int idx = AddStat(sym, "TICKS", true);
-         int res = ExportTicks(si, stotal, sym, digits, g_stats[idx]);
+         int res = ExportTicks(si, stotal, sym, digits, first_ticks[si], g_stats[idx]);
          if(res == RES_STOP)
            {
             status = "stopped by user";
@@ -1723,7 +1876,7 @@ void OnStart()
         {
          string type = g_tfNames[g_tfIdx[i]];
          int idx = AddStat(sym, type, false);
-         int res = ExportBars(si, stotal, sym, digits, g_tfValues[g_tfIdx[i]], type, g_stats[idx]);
+         int res = ExportBars(si, stotal, sym, digits, g_tfValues[g_tfIdx[i]], type, bars_starts[si], g_stats[idx]);
          if(res == RES_STOP)
            {
             status = "stopped by user";
