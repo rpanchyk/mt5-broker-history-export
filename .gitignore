@@ -1,0 +1,21 @@
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editors and Agents
+.vscode/
+.idea/
+.claude/
+
+# Build logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Compiled MQL5 programs
+*.ex5
+
+# Export output
+*.csv
+*.csv.part
