@@ -976,9 +976,52 @@ void BuildBarLine(const MqlRates &r, const int digits, string &line)
   }
 
 //+------------------------------------------------------------------+
+//| true if the terminal keeps fewer bars than the server has:       |
+//| the local series is cut by "Max bars in chart"                   |
+//+------------------------------------------------------------------+
+bool LocalHistoryCut(const string sym, const ENUM_TIMEFRAMES tf)
+  {
+   long maxbars = TerminalInfoInteger(TERMINAL_MAXBARS);
+   return (long)Bars(sym, tf) >= maxbars;
+  }
+
+//+------------------------------------------------------------------+
+//| true if there are certainly no bars in [from, to]                |
+//| (CopyRates returns -1 for such ranges)                           |
+//+------------------------------------------------------------------+
+bool RangeIsEmpty(const string sym, const ENUM_TIMEFRAMES tf, const datetime from, const datetime to)
+  {
+   if(!SeriesInfoInteger(sym, tf, SERIES_SYNCHRONIZED) || Bars(sym, tf, from, to) != 0)
+      return false;
+   datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
+   datetime server_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_SERVER_FIRSTDATE);
+//--- weekend / holiday inside the local history
+   if(local_first > 0 && from >= local_first)
+      return true;
+//--- the whole range is older than the server history
+   if(server_first > 0 && to < server_first)
+      return true;
+//--- server start is unknown: trust the local start if the terminal limit does not cut it
+   if(server_first == 0 && local_first > 0 && to < local_first && !LocalHistoryCut(sym, tf))
+      return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Explanation for the journal when bars cannot be obtained         |
+//+------------------------------------------------------------------+
+string HistoryLimitHint(const string sym, const ENUM_TIMEFRAMES tf, const datetime from)
+  {
+   datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
+   if(local_first > 0 && from < local_first && LocalHistoryCut(sym, tf))
+      return StringFormat("; the terminal keeps only %s bars (\"Max bars in chart\"), local history starts at %s: set \"Max bars in chart\" to Unlimited and restart the terminal",
+                          FormatCount(TerminalInfoInteger(TERMINAL_MAXBARS)), FormatDateTime(local_first));
+   return "";
+  }
+
+//+------------------------------------------------------------------+
 //| CopyRates [from, to] (both inclusive) with retries.              |
-//| A range with no bars is reported as 0 instead of -1 when the     |
-//| series is synchronized and the range lies inside local history.  |
+//| A range with certainly no bars is reported as 0 instead of -1.   |
 //| Returns -1 if bars could not be obtained.                        |
 //+------------------------------------------------------------------+
 int CopyRatesSafe(const string sym, const ENUM_TIMEFRAMES tf, const datetime from, const datetime to,
@@ -996,15 +1039,10 @@ int CopyRatesSafe(const string sym, const ENUM_TIMEFRAMES tf, const datetime fro
       last_error = GetLastError();
       if(n >= 0)
          return n;
-      //--- weekend / holiday: no bars in the range at all
-      if(SeriesInfoInteger(sym, tf, SERIES_SYNCHRONIZED) && Bars(sym, tf, from, to) == 0)
+      if(RangeIsEmpty(sym, tf, from, to))
         {
-         datetime first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
-         if(first > 0 && from >= first)
-           {
-            ArrayResize(rates, 0);
-            return 0;
-           }
+         ArrayResize(rates, 0);
+         return 0;
         }
      }
    return -1;
@@ -1170,8 +1208,9 @@ int LoadBarChunk(const string sym, const ENUM_TIMEFRAMES tf, const string type,
         {
          if(!last)
             continue;
-         Log(sym, StringFormat("ERROR: %s %s .. %s: no data after %d retries (error %d)",
-                               type, FormatDateTime(cs), FormatDateTime(ce), InpMaxRetries, err));
+         Log(sym, StringFormat("ERROR: %s %s .. %s: no data after %d retries (error %d)%s",
+                               type, FormatDateTime(cs), FormatDateTime(ce), InpMaxRetries, err,
+                               HistoryLimitHint(sym, tf, cs)));
          n = 0;
          return RES_ERROR;
         }
@@ -1406,12 +1445,28 @@ int ExportTicks(const int si, const int stotal, const string sym, const int digi
 int ExportBars(const int si, const int stotal, const string sym, const int digits,
                const ENUM_TIMEFRAMES tf, const string type, SStat &st)
   {
-//--- history depth
-   datetime server_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_SERVER_FIRSTDATE);
+//--- history depth: the terminal may not know the server start yet
+//--- (e.g. the symbol was just added to Market Watch), so wait for it
+   datetime server_first = 0;
+   for(int a = 0; a <= InpMaxRetries; a++)
+     {
+      if(a > 0)
+         Sleep(InpRetryDelayMs);
+      if(IsStopped())
+         return RES_STOP;
+      if(!EnsureConnected(sym))
+         return ConnectionResult();
+      Bars(sym, tf);                   // requests the series and starts its synchronization
+      server_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_SERVER_FIRSTDATE);
+      if(server_first > 0)
+         break;
+     }
    datetime local_first = (datetime)SeriesInfoInteger(sym, tf, SERIES_FIRSTDATE);
    Log(sym, StringFormat("%s: server history from %s, local history from %s", type,
                          server_first > 0 ? FormatDate(server_first) : "unknown",
                          local_first > 0 ? FormatDate(local_first) : "none"));
+   if(server_first == 0)
+      Log(sym, StringFormat("WARNING: %s: server history start is unknown, periods before the local history are treated as empty only if \"Max bars in chart\" does not cut it", type));
    datetime eff_start = g_from;
    if(server_first > 0 && server_first > g_from)
      {

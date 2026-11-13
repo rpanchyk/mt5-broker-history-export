@@ -357,8 +357,8 @@ At the end, the service writes a summary table. The table shows, for each symbol
 ## Limitations
 
 - **The terminal must operate and have a connection.** The service gets the data through the terminal connection.
-- **The broker sets the history depth.** Tick history is usually much shorter than bar history. The service writes the start of the available history to the journal.
-- **The terminal limits the number of bars.** Set **Tools → Options → Charts → Max bars in chart** to **Unlimited** for a long M1 history. Then restart the terminal. The service shows a warning if the limit is too small.
+- **The broker sets the history depth.** Tick history is usually much shorter than bar history. If `InpDateFrom` is earlier than the broker history, the service starts the export at the first available tick or bar. It writes this date to the journal. This is not an error.
+- **The terminal limits the number of bars.** Set **Tools → Options → Charts → Max bars in chart** to **Unlimited** for a long M1 history. Then restart the terminal. The service shows a warning at the start if the limit is too small. If the limit cuts the bars that you need, the export of this timeframe stops with an error. The error message shows the limit and the first available local bar.
 - **All times are server times.** The service does not convert the times to UTC.
 - **The first download can be slow.** The terminal downloads the data from the server. The next exports of the same period are faster.
 - **Large volume.** One year of ticks for an active forex symbol is tens of millions of rows and some GB. Make sure that the disk has sufficient space.
