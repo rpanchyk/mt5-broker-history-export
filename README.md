@@ -1,4 +1,4 @@
-# mt5-broker-history-export
+# Broker history export service for MetaTrader 5
 
 An MQL5 service for MetaTrader 5. The service exports the tick history and the bar history of your broker to CSV files.
 
@@ -6,20 +6,34 @@ The service gets the data from the broker server through the terminal. It does n
 
 ## Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Start an export](#start-an-export)
-- [Stop an export](#stop-an-export)
-- [Inputs](#inputs)
-- [Output files](#output-files)
-- [CSV format](#csv-format)
-- [How the service works](#how-the-service-works)
-- [GAP warnings](#gap-warnings)
-- [Journal](#journal)
-- [Limitations](#limitations)
-- [Examples](#examples)
-- [License](#license)
+- [Broker history export service for MetaTrader 5](#broker-history-export-service-for-metatrader-5)
+  - [Contents](#contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Start an export](#start-an-export)
+  - [Stop an export](#stop-an-export)
+  - [Inputs](#inputs)
+    - [What to export](#what-to-export)
+    - [Period](#period)
+    - [Files](#files)
+    - [CSV format](#csv-format)
+    - [Data download](#data-download)
+  - [Output files](#output-files)
+  - [CSV format](#csv-format-1)
+    - [Tick columns](#tick-columns)
+    - [Bar columns](#bar-columns)
+    - [Read a file in Python](#read-a-file-in-python)
+  - [How the service works](#how-the-service-works)
+    - [Continue an interrupted export](#continue-an-interrupted-export)
+  - [GAP warnings](#gap-warnings)
+  - [Journal](#journal)
+  - [Limitations](#limitations)
+  - [Examples](#examples)
+    - [Ticks of one symbol, one file for each month](#ticks-of-one-symbol-one-file-for-each-month)
+    - [Bars only, three timeframes](#bars-only-three-timeframes)
+    - [Bid and Ask only, for Linux](#bid-and-ask-only-for-linux)
+  - [License](#license)
 
 ## Features
 
