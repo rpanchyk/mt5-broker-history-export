@@ -121,8 +121,8 @@ MQL5\Files\HistoryExport\
 | Параметр | Тип | За замовчуванням | Опис |
 |---|---|---|---|
 | `InpDelimiter` | `ENUM_DELIMITER` | `DELIM_COMMA` | Роздільник: `DELIM_COMMA` (`,`), `DELIM_SEMICOLON` (`;`), `DELIM_TAB` (табуляція). |
-| `InpTickColumns` | `string` | `"datetime,bid,ask,time_msc,last,volume,flags"` | Які колонки тіків записувати і в якому порядку. |
-| `InpBarColumns` | `string` | `"datetime,open,high,low,close,tick_volume,spread,real_volume"` | Які колонки барів записувати і в якому порядку. |
+| `InpTickColumns` | `string` | `"datetime,bid,ask"` | Які колонки тіків записувати і в якому порядку. Можливі значення: `datetime`, `bid`, `ask`, `time_msc`, `last`, `volume`, `flags` (опис — розділ 4.1). |
+| `InpBarColumns` | `string` | `"datetime,open,high,low,close"` | Які колонки барів записувати і в якому порядку. Можливі значення: `datetime`, `open`, `high`, `low`, `close`, `tick_volume`, `spread`, `real_volume`, `time` (опис — розділ 4.2). |
 | `InpWriteHeader` | `bool` | `true` | Записувати рядок із назвами колонок. |
 | `InpCrlfType` | `ENUM_CRLF_TYPE` | `CRLF_WINDOWS` | Символ кінця рядка (див. нижче). |
 
@@ -160,17 +160,17 @@ MQL5\Files\HistoryExport\
 
 ### 4.1. Тіки
 
-Набір і порядок колонок задає `InpTickColumns`. Нижче — усі доступні колонки в порядку за замовчуванням:
+Набір і порядок колонок задає `InpTickColumns`. Нижче — усі можливі значення; за замовчуванням записуються `datetime,bid,ask`:
 
-| Колонка | Джерело (`MqlTick`) | Формат |
-|---|---|---|
-| `datetime` | `time_msc` | `YYYY.MM.DD HH:MM:SS.mmm` |
-| `bid` | `bid` | Знаків після коми — `SYMBOL_DIGITS` |
-| `ask` | `ask` | Знаків після коми — `SYMBOL_DIGITS` |
-| `time_msc` | `time_msc` | Ціле, мілісекунди від 1970.01.01 |
-| `last` | `last` | Знаків після коми — `SYMBOL_DIGITS` |
-| `volume` | `volume_real` | Дробове число, без зайвих нулів |
-| `flags` | `flags` | Ціле, бітова маска |
+| Колонка | За замовчуванням | Джерело (`MqlTick`) | Формат |
+|---|---|---|---|
+| `datetime` | так | `time_msc` | `YYYY.MM.DD HH:MM:SS.mmm` |
+| `bid` | так | `bid` | Знаків після коми — `SYMBOL_DIGITS` |
+| `ask` | так | `ask` | Знаків після коми — `SYMBOL_DIGITS` |
+| `time_msc` | ні | `time_msc` | Ціле, мілісекунди від 1970.01.01 |
+| `last` | ні | `last` | Ціна останньої угоди, знаків після коми — `SYMBOL_DIGITS` (для форексу зазвичай 0) |
+| `volume` | ні | `volume_real` | Обсяг останньої угоди, дробове число без зайвих нулів (для форексу зазвичай 0) |
+| `flags` | ні | `flags` | Ціле, бітова маска (таблиця нижче) |
 
 Значення `flags`:
 
@@ -186,6 +186,14 @@ MQL5\Files\HistoryExport\
 Приклад (параметри за замовчуванням):
 
 ```csv
+datetime,bid,ask
+2026.01.02 10:00:00.123,1.03512,1.03514
+2026.01.02 10:00:00.310,1.03513,1.03514
+```
+
+Приклад з усіма колонками (`InpTickColumns = "datetime,bid,ask,time_msc,last,volume,flags"`):
+
+```csv
 datetime,bid,ask,time_msc,last,volume,flags
 2026.01.02 10:00:00.123,1.03512,1.03514,1767348000123,0.00000,0,6
 2026.01.02 10:00:00.310,1.03513,1.03514,1767348000310,0.00000,0,2
@@ -193,26 +201,34 @@ datetime,bid,ask,time_msc,last,volume,flags
 
 ### 4.2. Бари
 
-Набір і порядок колонок задає `InpBarColumns`. Нижче — усі доступні колонки; перші вісім у порядку за замовчуванням:
+Набір і порядок колонок задає `InpBarColumns`. Нижче — усі можливі значення; за замовчуванням записуються `datetime,open,high,low,close`:
 
-| Колонка | Джерело (`MqlRates`) | Формат |
-|---|---|---|
-| `datetime` | `time` | `YYYY.MM.DD HH:MM:SS`, час відкриття бару |
-| `open` | `open` | Знаків після коми — `SYMBOL_DIGITS` |
-| `high` | `high` | Знаків після коми — `SYMBOL_DIGITS` |
-| `low` | `low` | Знаків після коми — `SYMBOL_DIGITS` |
-| `close` | `close` | Знаків після коми — `SYMBOL_DIGITS` |
-| `tick_volume` | `tick_volume` | Ціле, кількість тіків у барі |
-| `spread` | `spread` | Ціле, спред у пунктах |
-| `real_volume` | `real_volume` | Ціле, біржовий обсяг (для форексу зазвичай 0) |
-| `time` | `time` | Ціле, секунди від 1970.01.01 (не входить у список за замовчуванням) |
+| Колонка | За замовчуванням | Джерело (`MqlRates`) | Формат |
+|---|---|---|---|
+| `datetime` | так | `time` | `YYYY.MM.DD HH:MM:SS`, час відкриття бару |
+| `open` | так | `open` | Знаків після коми — `SYMBOL_DIGITS` |
+| `high` | так | `high` | Знаків після коми — `SYMBOL_DIGITS` |
+| `low` | так | `low` | Знаків після коми — `SYMBOL_DIGITS` |
+| `close` | так | `close` | Знаків після коми — `SYMBOL_DIGITS` |
+| `tick_volume` | ні | `tick_volume` | Ціле, кількість тіків у барі |
+| `spread` | ні | `spread` | Ціле, спред у пунктах |
+| `real_volume` | ні | `real_volume` | Ціле, біржовий обсяг (для форексу зазвичай 0) |
+| `time` | ні | `time` | Ціле, секунди від 1970.01.01 |
 
 Приклад (параметри за замовчуванням, H1):
 
 ```csv
-datetime,open,high,low,close,tick_volume,spread,real_volume
-2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560,4821,2,0
-2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544,3977,2,0
+datetime,open,high,low,close
+2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560
+2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544
+```
+
+Приклад з усіма колонками (`InpBarColumns = "datetime,open,high,low,close,tick_volume,spread,real_volume,time"`):
+
+```csv
+datetime,open,high,low,close,tick_volume,spread,real_volume,time
+2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560,4821,2,0,1767348000
+2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544,3977,2,0,1767351600
 ```
 
 ## 5. Як працює сервіс

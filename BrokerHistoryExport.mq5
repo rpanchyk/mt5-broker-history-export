@@ -1,9 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                          BrokerHistoryExport.mq5 |
-//|      Exports broker tick and bar history from MetaTrader 5 to CSV |
+//|                                         Copyright 2026, rpanchyk |
+//|                                      https://github.com/rpanchyk |
 //+------------------------------------------------------------------+
 #property service
-#property copyright   "mt5-broker-history-export, see LICENSE"
+#property copyright "Copyright 2026, rpanchyk"
+#property link      "https://github.com/rpanchyk"
 #property version     "1.00"
 #property description "Exports broker tick history and bars of any timeframe to CSV files."
 #property description "Runs as a service: no chart is used. Progress is printed to the Experts journal."
@@ -50,7 +52,7 @@ input ENUM_EXPORT_TICKS InpTickType            = TICKS_ALL;       // Tick type
 input string            InpBarTimeframes       = "";              // Bar timeframes, comma separated (e.g. M1,H1,D1)
 
 input group "Period (broker server time)"
-input datetime          InpDateFrom            = D'2026.01.01 00:00'; // Date from (inclusive)
+input datetime          InpDateFrom            = D'2026.11.01 00:00'; // Date from (inclusive)
 input datetime          InpDateTo              = 0;               // Date to (exclusive, 1970.01.01 = now)
 
 input group "Files"
@@ -62,8 +64,8 @@ input bool              InpSkipExisting        = true;            // Skip existi
 
 input group "CSV format"
 input ENUM_DELIMITER    InpDelimiter           = DELIM_COMMA;     // Delimiter
-input string            InpTickColumns         = "datetime,bid,ask,time_msc,last,volume,flags"; // Tick columns
-input string            InpBarColumns          = "datetime,open,high,low,close,tick_volume,spread,real_volume"; // Bar columns
+input string            InpTickColumns         = "datetime,bid,ask";                    // Tick columns (+ time_msc,last,volume,flags)
+input string            InpBarColumns          = "datetime,open,high,low,close";        // Bar columns (+ tick_volume,spread,real_volume,time)
 input bool              InpWriteHeader         = true;            // Write header row
 input ENUM_CRLF_TYPE    InpCrlfType            = CRLF_WINDOWS;    // Line ending
 

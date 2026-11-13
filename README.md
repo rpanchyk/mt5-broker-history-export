@@ -130,8 +130,8 @@ All times are in the time zone of the broker server.
 | Input | Default | Description |
 |---|---|---|
 | `InpDelimiter` | `DELIM_COMMA` | Delimiter: comma, semicolon or tab. |
-| `InpTickColumns` | `datetime,bid,ask,time_msc,last,volume,flags` | Tick columns and their order. |
-| `InpBarColumns` | `datetime,open,high,low,close,tick_volume,spread,real_volume` | Bar columns and their order. |
+| `InpTickColumns` | `datetime,bid,ask` | Tick columns and their order. Possible values: `datetime`, `bid`, `ask`, `time_msc`, `last`, `volume`, `flags`. Refer to [Tick columns](#tick-columns). |
+| `InpBarColumns` | `datetime,open,high,low,close` | Bar columns and their order. Possible values: `datetime`, `open`, `high`, `low`, `close`, `tick_volume`, `spread`, `real_volume`, `time`. Refer to [Bar columns](#bar-columns). |
 | `InpWriteHeader` | `true` | Set to `true` to write a header row. |
 | `InpCrlfType` | `CRLF_WINDOWS` | Line end: `CRLF_WINDOWS` (CR LF), `CRLF_LINUX` (LF), `CRLF_MACOS` (CR). Use `CRLF_LINUX` for Linux and modern macOS. |
 
@@ -205,17 +205,27 @@ All files:
 
 ### Tick columns
 
-| Column | Format |
-|---|---|
-| `datetime` | `YYYY.MM.DD HH:MM:SS.mmm` |
-| `bid` | Price with the digits of the symbol |
-| `ask` | Price with the digits of the symbol |
-| `time_msc` | Milliseconds from 1970.01.01 |
-| `last` | Price with the digits of the symbol |
-| `volume` | Real volume, without trailing zeros |
-| `flags` | Bit mask (refer to the table below) |
+Use these values in `InpTickColumns`. The default is `datetime,bid,ask`.
 
-Example:
+| Column | Default | Format |
+|---|---|---|
+| `datetime` | Yes | Tick time, `YYYY.MM.DD HH:MM:SS.mmm` |
+| `bid` | Yes | Bid price, with the digits of the symbol |
+| `ask` | Yes | Ask price, with the digits of the symbol |
+| `time_msc` | No | Tick time, milliseconds from 1970.01.01 |
+| `last` | No | Price of the last deal, with the digits of the symbol (usually 0 for forex) |
+| `volume` | No | Volume of the last deal, without trailing zeros (usually 0 for forex) |
+| `flags` | No | Bit mask. Refer to the table below. |
+
+Example with the default columns:
+
+```csv
+datetime,bid,ask
+2026.01.02 10:00:00.123,1.03512,1.03514
+2026.01.02 10:00:00.310,1.03513,1.03514
+```
+
+Example with all columns (`InpTickColumns = datetime,bid,ask,time_msc,last,volume,flags`):
 
 ```csv
 datetime,bid,ask,time_msc,last,volume,flags
@@ -238,21 +248,34 @@ A tick can have more than one flag. For example, `6` is Bid and Ask.
 
 ### Bar columns
 
-| Column | Format |
-|---|---|
-| `datetime` | `YYYY.MM.DD HH:MM:SS`, bar open time |
-| `open`, `high`, `low`, `close` | Price with the digits of the symbol |
-| `tick_volume` | Number of ticks in the bar |
-| `spread` | Spread in points |
-| `real_volume` | Exchange volume (usually 0 for forex) |
-| `time` | Seconds from 1970.01.01. This column is not in the default list. |
+Use these values in `InpBarColumns`. The default is `datetime,open,high,low,close`.
 
-Example (H1):
+| Column | Default | Format |
+|---|---|---|
+| `datetime` | Yes | Bar open time, `YYYY.MM.DD HH:MM:SS` |
+| `open` | Yes | Open price, with the digits of the symbol |
+| `high` | Yes | High price, with the digits of the symbol |
+| `low` | Yes | Low price, with the digits of the symbol |
+| `close` | Yes | Close price, with the digits of the symbol |
+| `tick_volume` | No | Number of ticks in the bar |
+| `spread` | No | Spread in points |
+| `real_volume` | No | Exchange volume (usually 0 for forex) |
+| `time` | No | Bar open time, seconds from 1970.01.01 |
+
+Example with the default columns (H1):
 
 ```csv
-datetime,open,high,low,close,tick_volume,spread,real_volume
-2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560,4821,2,0
-2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544,3977,2,0
+datetime,open,high,low,close
+2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560
+2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544
+```
+
+Example with all columns (`InpBarColumns = datetime,open,high,low,close,tick_volume,spread,real_volume,time`):
+
+```csv
+datetime,open,high,low,close,tick_volume,spread,real_volume,time
+2026.01.02 10:00:00,1.03512,1.03598,1.03471,1.03560,4821,2,0,1767348000
+2026.01.02 11:00:00,1.03560,1.03602,1.03515,1.03544,3977,2,0,1767351600
 ```
 
 The service does not write the bar that is not closed.
